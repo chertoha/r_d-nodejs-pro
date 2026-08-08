@@ -1,0 +1,25 @@
+{
+  "name": "r_d-nodejs-pro",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start:http": "nodemon node src/server.js",
+    "start:https": "nodemon node src/https-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chertoha/r_d-nodejs-pro.git"
+  },
+  "author": "Anton Chertok",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chertoha/r_d-nodejs-pro/issues"
+  },
+  "homepage": "https://github.com/chertoha/r_d-nodejs-pro#readme",
+  "dependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
