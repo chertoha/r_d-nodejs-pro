@@ -19,7 +19,7 @@
     "url": "https://github.com/chertoha/r_d-nodejs-pro/issues"
   },
   "homepage": "https://github.com/chertoha/r_d-nodejs-pro#readme",
-  "dependencies": {
+  "devDependencies": {
     "nodemon": "^3.1.14"
   }
 }

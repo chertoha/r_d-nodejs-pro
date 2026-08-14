@@ -2,3 +2,11 @@ node_modules/
 dist/   
 
 *.pem
+
+
+
+**/.env
+**/.env.local
+**/.env.development
+**/.env.test
+**/.env.production
