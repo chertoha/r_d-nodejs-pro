@@ -2,7 +2,13 @@ const headerEndPattern = "\r\n\r\n"
 
 export const httpHandler = (socket) => {
   let buffer = ""
+  let responded = false
+
   socket.on("data", (chunk) => {
+    if (responded) {
+      return
+    }
+
     buffer += chunk.toString("latin1")
 
     if (!buffer.includes(headerEndPattern)) {
@@ -28,8 +34,13 @@ export const httpHandler = (socket) => {
     console.log("RESPONSE:")
     console.log(response)
 
-    socket.write(response)
-    socket.end()
+    buffer = ""
+    responded = true
+    socket.end(response)
+  })
+
+  socket.on("error", (err) => {
+    console.error("Socket error:", err)
   })
 }
 
@@ -40,7 +51,7 @@ function parseHeaders(rawHeaders) {
     const separatorIndex = rawHeader.indexOf(":")
     const key = rawHeader.slice(0, separatorIndex).trim()
     const value = rawHeader.slice(separatorIndex + 1).trim()
-    entries.push([key.toLowerCase(), value.toLowerCase()])
+    entries.push([key.toLowerCase(), value])
   }
 
   return Object.fromEntries(entries)
@@ -49,7 +60,10 @@ function parseHeaders(rawHeaders) {
 function resolveRoute(context) {
   const result = router(context)
 
-  const headers = Object.entries(result.headers)
+  const headers = Object.entries({
+    ...result.headers,
+    "content-length": Buffer.byteLength(result.body),
+  })
     .map(([key, value]) => `${key}: ${value}`)
     .join("\r\n")
 
@@ -85,7 +99,6 @@ function router(context) {
     status: 404,
     headers: {
       "content-type": "text/plain",
-      "content-length": Buffer.byteLength(body),
     },
     body,
   }

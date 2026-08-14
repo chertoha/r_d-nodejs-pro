@@ -1,3 +1,15 @@
+## HTTPS certificate
+
+Generate a self-signed certificate:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365
+```
+
+The command creates `key.pem` and `cert.pem` in the current directory.
+
+## TLS Debug Session
+
 <!-- $ openssl s_client -connect localhost:3443 -->
 
 ```text
