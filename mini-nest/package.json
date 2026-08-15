@@ -1,0 +1,26 @@
+{
+  "name": "mini-nest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "watch": "tsc --watch",
+    "serve": "nodemon --watch dist --ext js --exec \"node dist/src/index.js\"",
+    "dev": "concurrently \"npm:watch\" \"npm:serve\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "concurrently": "^10.0.5",
+    "nodemon": "^3.1.14",
+    "typescript": "^6.0.3"
+  }
+}
