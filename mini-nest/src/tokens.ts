@@ -1,0 +1,5 @@
+export const INJECTABLE_TOKEN = Symbol("INJECTABLE_TOKEN")
+
+export const INJECT_TOKENS = Symbol("INJECT_TOKENS")
+
+export const NOTIFICATION_SENDER = Symbol("NOTIFICATION_SENDER")
