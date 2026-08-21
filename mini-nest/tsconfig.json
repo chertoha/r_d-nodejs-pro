@@ -12,7 +12,9 @@
     "skipLibCheck": true,
 
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+
+    "types": ["node"]
   },
 
   "include": ["src/**/*.ts", "test/**/*.ts"]

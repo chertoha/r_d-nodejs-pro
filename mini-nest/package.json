@@ -5,12 +5,13 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "node dist/src/index.js",
     "watch": "tsc --watch",
     "serve": "nodemon --watch dist --ext js --exec \"node dist/src/index.js\"",
-    "dev": "concurrently \"npm:watch\" \"npm:serve\""
+    "dev": "concurrently \"npm:watch\" \"npm:serve\"",
+    "test": "node --test dist/test/*.test.js",
+    "test:local": "npm run build && node --test dist/test/*.test.js"
   },
   "author": "",
   "license": "ISC",

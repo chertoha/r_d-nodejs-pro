@@ -1,9 +1,26 @@
 import "reflect-metadata"
 import { Injectable } from "./decorators/injectable.js"
-import { INJECTABLE_TOKEN } from "./tokens.js"
+import { INJECTABLE_TOKEN, NOTIFICATION_SENDER } from "./tokens.js"
 import { Container } from "./container.js"
+import { Inject } from "./decorators/inject.js"
 
 console.log("Mini Nest started")
+
+interface NotificationSender {
+  send(message: string): void
+}
+
+@Injectable()
+class NotificationService {
+  constructor(
+    @Inject(NOTIFICATION_SENDER)
+    private readonly sender: NotificationSender,
+  ) {}
+
+  notify(message: string) {
+    this.sender.send(message)
+  }
+}
 
 @Injectable()
 class Config {
@@ -47,7 +64,20 @@ class UserService {
   }
 }
 
+@Injectable()
+class CircularDependencyA {}
+
+@Injectable()
+class CircularDependencyB {}
+
+const consoleSender: NotificationSender = {
+  send(message: string) {
+    console.log(message)
+  },
+}
+
 const container = new Container()
+container.register(NOTIFICATION_SENDER, consoleSender)
 
 const userService = container.resolve(UserService)
 const userService2 = container.resolve(UserService)
@@ -61,3 +91,14 @@ logger.log(`Users: ${JSON.stringify(users, null, 2)}`)
 
 console.log("Logger instances are the same:", logger === logger2)
 console.log("UserService instances are the same:", userService === userService2)
+
+Reflect.defineMetadata("design:paramtypes", [CircularDependencyB], CircularDependencyA)
+
+Reflect.defineMetadata("design:paramtypes", [CircularDependencyA], CircularDependencyB)
+
+// const circularDependencyA = container.resolve(CircularDependencyA)
+// const circularDependencyB = container.resolve(CircularDependencyB)
+
+const notificationService = container.resolve(NotificationService)
+
+notificationService.notify("Notification has sent!")
