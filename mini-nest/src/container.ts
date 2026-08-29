@@ -1,7 +1,6 @@
 import { InjectableOptions } from "./decorators/injectable.js"
 import { INJECTABLE_TOKEN, INJECT_TOKENS } from "./tokens.js"
-
-type Constructor<T = unknown> = new (...args: any[]) => T
+import { Constructor } from "./types/common.types.js"
 
 export class Container {
   private readonly instances = new Map<Constructor, unknown>()
@@ -11,7 +10,7 @@ export class Container {
     this.providers.set(token, value)
   }
 
-  resolve<T>(target: Constructor<T>, path = new Set<Constructor>()): T {
+  resolve<T extends object>(target: Constructor<T>, path = new Set<Constructor>()): T {
     if (path.has(target)) {
       const cycle = [...path, target].map((t) => t.name).join(" -> ")
       throw new Error(`Circular dependency detected: ${cycle}`)
