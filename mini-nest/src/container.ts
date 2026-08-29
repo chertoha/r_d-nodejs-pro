@@ -1,12 +1,13 @@
+import { InjectionToken } from "./decorators/inject.js"
 import { InjectableOptions } from "./decorators/injectable.js"
 import { INJECTABLE_TOKEN, INJECT_TOKENS } from "./tokens.js"
 import { Constructor } from "./types/common.types.js"
 
 export class Container {
   private readonly instances = new Map<Constructor, unknown>()
-  private readonly providers = new Map<symbol, unknown>()
+  private readonly providers = new Map<InjectionToken, unknown>()
 
-  register<T>(token: symbol, value: T): void {
+  register<T>(token: InjectionToken, value: T): void {
     this.providers.set(token, value)
   }
 
@@ -34,7 +35,7 @@ export class Container {
     path.add(target)
 
     const paramTypes: Constructor[] = Reflect.getMetadata("design:paramtypes", target) ?? []
-    const injectTokens: Map<number, symbol> =
+    const injectTokens: Map<number, InjectionToken> =
       Reflect.getMetadata(INJECT_TOKENS, target) ?? new Map()
 
     const dependencies = paramTypes.map((paramType, index) => {

@@ -1,15 +1,40 @@
 import { createServer } from "node:http"
 import { Container } from "./container.js"
 import { Dispatcher } from "./dispatcher.js"
-import { ValidationPipe } from "./pipes/validation.pipe.js"
 import { Router } from "./router.js"
 import { Constructor } from "./types/common.types.js"
+import { Guard } from "./interfaces/guard.interface.js"
+import { AuthGuard } from "./guards/auth.guard.js"
+import { Interceptor } from "./interfaces/interceptor.interface.js"
+import { LoggingInterceptor } from "./interceptors/logging.interceptor.js"
+import { ExceptionFilter } from "./filters/exception.filter.js"
+import { Middleware } from "./interfaces/middleware.interface.js"
 
-export function createApp(controllers: Constructor[]) {
+interface AppOptions {
+  middlewares?: Middleware[]
+  guards?: Guard[]
+  interceptors?: Interceptor[]
+}
+
+export function createApp(controllers: Constructor[], options: AppOptions = {}) {
   const container = new Container()
   const router = new Router(controllers)
-  const validationPipe = new ValidationPipe()
-  const dispatcher = new Dispatcher(router, container, validationPipe)
+  // const validationPipe = new ValidationPipe()
+
+  const middlewares = options.middlewares ?? []
+  const guards = options.guards ?? [new AuthGuard()]
+  const interceptors = options.interceptors ?? [new LoggingInterceptor()]
+
+  const exceptionFilter = new ExceptionFilter()
+
+  const dispatcher = new Dispatcher(
+    router,
+    container,
+    middlewares,
+    guards,
+    interceptors,
+    exceptionFilter,
+  )
 
   const server = createServer((req, res) => {
     dispatcher.dispatch(req, res)

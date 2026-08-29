@@ -1,27 +1,73 @@
 import { IncomingMessage, ServerResponse } from "node:http"
 import { Container } from "./container.js"
-import { Router } from "./router.js"
+import { RouteMatch, Router } from "./router.js"
 import { allowedMethods, HttpMethod } from "./types/http.types.js"
 import { HttpStatus } from "./constants/http-status.enum.js"
-import { Constructor, ControllerInstance, ParamType } from "./types/common.types.js"
-import { ValidationException, ValidationPipe } from "./pipes/validation.pipe.js"
+import { ControllerInstance, ParamType } from "./types/common.types.js"
+import { randomUUID } from "node:crypto"
+import { requestContext } from "./context/request-context.js"
+import { Guard } from "./interfaces/guard.interface.js"
+import { Interceptor } from "./interfaces/interceptor.interface.js"
+import { ExceptionFilter } from "./filters/exception.filter.js"
+import { Middleware } from "./interfaces/middleware.interface.js"
+import { NotFoundError } from "./errors/not-found.error.js"
+import { BadRequestError } from "./errors/bad-request.error.js"
+
+interface ResolvedRequest {
+  method: HttpMethod
+  url: URL
+  match: RouteMatch
+}
 
 export class Dispatcher {
   constructor(
     private readonly router: Router,
     private readonly container: Container,
-    private readonly validationPipe: ValidationPipe,
+    private readonly middlewares: Middleware[],
+    // private readonly validationPipe: ValidationPipe,
+    private readonly guards: Guard[],
+    private readonly interceptors: Interceptor[],
+    private readonly exceptionFilter: ExceptionFilter,
   ) {}
 
-  async dispatch(req: IncomingMessage, res: ServerResponse) {
-    try {
-      await this.handleRequest(req, res)
-    } catch (error) {
-      this.handleError(error, res)
-    }
+  async dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const requestId =
+      typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : randomUUID()
+
+    res.setHeader("X-Request-Id", requestId)
+
+    await requestContext.run(requestId, async () => {
+      try {
+        await this.handleRequest(req, res)
+      } catch (error) {
+        this.exceptionFilter.catch(error, res)
+      }
+    })
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const request = this.resolveRequest(req, res)
+    if (!request) return
+
+    await this.runMiddlewares(req, res, async () => {
+      const canActivate = await this.runGuards(req)
+
+      if (!canActivate) {
+        res.statusCode = HttpStatus.FORBIDDEN
+        res.end("Forbidden")
+        return
+      }
+
+      const result = await this.runInterceptors(req, async () => {
+        const args = await this.resolveArguments(req, request)
+        return this.runHandler(request, args)
+      })
+
+      this.sendResponse(res, request.method, result)
+    })
+  }
+
+  private resolveRequest(req: IncomingMessage, res: ServerResponse): ResolvedRequest | undefined {
     const method = req.method
 
     if (!this.isValidMethod(method)) {
@@ -31,55 +77,144 @@ export class Dispatcher {
     }
 
     const url = new URL(req.url ?? "/", "http://localhost")
-    const requestPath = url.pathname
-
-    const match = this.router.find(method, requestPath)
+    const match = this.router.find(method, url.pathname)
 
     if (match === undefined) {
-      res.statusCode = HttpStatus.NOT_FOUND
-      res.end("Route not found")
-      return
+      throw new NotFoundError("Route not found")
     }
 
-    const { controller, handlerName, params } = match.route
+    return {
+      method,
+      url,
+      match,
+    }
+  }
 
-    const paramTypes = Reflect.getMetadata(
-      "design:paramtypes",
-      controller.prototype,
-      handlerName,
-    ) as Constructor[]
+  private async runGuards(req: IncomingMessage): Promise<boolean> {
+    for (const guard of this.guards) {
+      const canActivate = await guard.canActivate(req)
+
+      if (!canActivate) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  // ClassValidator version
+  // private async resolveArguments(
+  //   req: IncomingMessage,
+  //   request: ResolvedRequest,
+  // ): Promise<unknown[]> {
+  //   const { url, match } = request
+  //   const { controller, handlerName, params } = match.route
+
+  //   const paramTypes: Constructor[] =
+  //     Reflect.getMetadata("design:paramtypes", controller.prototype, handlerName) ?? []
+
+  //   const hasBodyParam = [...params.values()].some(({ type }) => type === ParamType.BODY)
+
+  //   const body = hasBodyParam ? await this.readBody(req) : undefined
+
+  //   const args: unknown[] = []
+
+  //   for (const [index, { type, name }] of params) {
+  //     if (type === ParamType.PARAM) {
+  //       args[index] = name ? match.pathParams[name] : undefined
+  //     }
+
+  //     if (type === ParamType.QUERY) {
+  //       args[index] = name ? url.searchParams.get(name) : undefined
+  //     }
+
+  //     if (type === ParamType.BODY) {
+  //       const dtoClass = paramTypes[index]
+
+  //       args[index] = await this.validationPipe.transform(body, dtoClass)
+  //     }
+  //   }
+
+  //   return args
+  // }
+
+  private async resolveArguments(
+    req: IncomingMessage,
+    request: ResolvedRequest,
+  ): Promise<unknown[]> {
+    const { url, match } = request
+    const { params } = match.route
 
     const hasBodyParam = [...params.values()].some(({ type }) => type === ParamType.BODY)
-    const body = hasBodyParam ? await this.readBody(req) : undefined
 
+    const body = hasBodyParam ? await this.readBody(req) : undefined
     const args: unknown[] = []
 
-    for (const [index, paramMetadata] of params) {
-      const { type, name } = paramMetadata
+    for (const [index, { type, name, pipe }] of params) {
+      let value: unknown
 
       if (type === ParamType.PARAM) {
-        args[index] = name ? match.pathParams[name] : undefined
+        value = name ? match.pathParams[name] : match.pathParams
       }
 
       if (type === ParamType.QUERY) {
-        args[index] = name ? url.searchParams.get(name) : undefined
+        value = name ? url.searchParams.get(name) : Object.fromEntries(url.searchParams)
       }
 
       if (type === ParamType.BODY) {
-        const dtoClass = paramTypes[index]
-        args[index] = await this.validationPipe.transform(body, dtoClass)
+        value = body
       }
+
+      args[index] = pipe ? await pipe.transform(value) : value
     }
+
+    return args
+  }
+
+  private async runHandler(request: ResolvedRequest, args: unknown[]): Promise<unknown> {
+    const { controller, handlerName } = request.match.route
 
     const controllerInstance = this.container.resolve(controller) as ControllerInstance
     const handler = controllerInstance[handlerName]
+    return handler.call(controllerInstance, ...args)
+  }
 
-    const result = await handler.call(controllerInstance, ...args)
-
+  private sendResponse(res: ServerResponse, method: HttpMethod, result: unknown): void {
     res.statusCode = method === HttpMethod.POST ? HttpStatus.CREATED : HttpStatus.OK
-
     res.setHeader("content-type", "application/json")
     res.end(JSON.stringify(result))
+  }
+
+  private async runMiddlewares(
+    req: IncomingMessage,
+    res: ServerResponse,
+    continueRequest: () => Promise<void>,
+  ): Promise<void> {
+    let next = continueRequest
+
+    for (const middleware of [...this.middlewares].reverse()) {
+      const nextMiddleware = next
+
+      next = async () => {
+        await middleware.use(req, res, nextMiddleware)
+      }
+    }
+
+    await next()
+  }
+  private async runInterceptors(
+    req: IncomingMessage,
+    handler: () => Promise<unknown>,
+  ): Promise<unknown> {
+    let next = handler
+
+    for (const interceptor of [...this.interceptors].reverse()) {
+      const currentNext = next
+
+      next = () => interceptor.intercept(req, currentNext)
+    }
+
+    return next()
   }
 
   private isValidMethod(method: string | undefined): method is HttpMethod {
@@ -100,7 +235,7 @@ export class Dispatcher {
         }
 
         try {
-          resolve(JSON.parse(body))
+          resolve(this.parseJson(body))
         } catch (error) {
           reject(error)
         }
@@ -110,23 +245,31 @@ export class Dispatcher {
     })
   }
 
-  private handleError(error: unknown, res: ServerResponse): void {
-    if (error instanceof ValidationException) {
-      res.statusCode = HttpStatus.BAD_REQUEST
-      res.setHeader("content-type", "application/json")
-
-      res.end(
-        JSON.stringify({
-          errors: error.errors,
-        }),
-      )
-
-      return
+  private parseJson(json: string): unknown {
+    try {
+      return JSON.parse(json)
+    } catch {
+      throw new BadRequestError("Invalid JSON")
     }
-
-    console.error(error)
-
-    res.statusCode = HttpStatus.INTERNAL_SERVER_ERROR
-    res.end("Internal Server Error")
   }
+
+  // private handleError(error: unknown, res: ServerResponse): void {
+  //   if (error instanceof ValidationException) {
+  //     res.statusCode = HttpStatus.BAD_REQUEST
+  //     res.setHeader("content-type", "application/json")
+
+  //     res.end(
+  //       JSON.stringify({
+  //         errors: error.errors,
+  //       }),
+  //     )
+
+  //     return
+  //   }
+
+  //   console.error(error)
+
+  //   res.statusCode = HttpStatus.INTERNAL_SERVER_ERROR
+  //   res.end("Internal Server Error")
+  // }
 }
