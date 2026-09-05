@@ -1,0 +1,13 @@
+node_modules/
+dist/   
+
+*.pem
+
+
+
+.env
+.env.*
+!.env.example
+
+
+secrets/
