@@ -19,6 +19,77 @@ The project is implemented directly on top of Node.js without NestJS, Express, o
 - Custom provider registration by token
 - Circular dependency detection
 
+# Part 3 — Request Lifecycle
+
+The framework implements the following HTTP request lifecycle:
+
+```text
+Request
+  ↓
+Middleware
+  ↓
+Guard
+  ↓
+Interceptor (before)
+  ↓
+Pipe
+  ↓
+Handler
+  ↓
+Interceptor (after)
+  ↓
+Response
+
+Any error
+  ↓
+Exception Filter
+```
+
+## Guard
+
+`AuthGuard` runs before validation and the handler. It checks the `Authorization` header. If access is denied, the server returns HTTP 403 and the handler is not executed.
+
+## Interceptor
+
+`LoggingInterceptor` wraps the handler execution and measures request duration:
+
+```text
+GET /users — 12.3 ms
+```
+
+## Validation Pipe
+
+Request validation is implemented with Zod 4.
+
+A Zod schema is passed to `ZodValidationPipe`:
+
+```ts
+@Post()
+createUser(
+  @Body(new ZodValidationPipe(CreateUserSchema))
+  body: CreateUserDto,
+) {}
+```
+
+Invalid data produces a `ValidationError`, which is mapped to HTTP 400 by the exception filter.
+
+## Exception Filter
+
+The exception filter converts errors into HTTP responses:
+
+- `ValidationError` → 400 with validation fields
+- `BadRequestError` → 400
+- `NotFoundError` → 404 with a meaningful message
+- unexpected errors → 500 without exposing stack traces or internal error details
+
+## Request Context
+
+Each request receives a request ID. The server uses the incoming `X-Request-Id` header when provided or generates a new ID.
+
+The request ID is stored using Node.js `AsyncLocalStorage`, so services and repositories can access it without passing it through method parameters. The same ID is returned in the `X-Request-Id` response header.
+
+A global variable cannot be used for request context because Node.js can process other requests while the current request is waiting for asynchronous work. Another request could overwrite the global value and cause request IDs to leak between requests. `AsyncLocalStorage` keeps a separate context for each asynchronous request chain.
+
 ### HTTP Routing
 
 - `@Controller(prefix)` class decorator
@@ -505,3 +576,74 @@ curl -i -X POST "http://localhost:3000/users" \
 ```
 
 The server responds with HTTP `400 Bad Request` and validation details.
+
+# Part 3 — Request Lifecycle
+
+The framework implements the following HTTP request lifecycle:
+
+```text
+Request
+  ↓
+Middleware
+  ↓
+Guard
+  ↓
+Interceptor (before)
+  ↓
+Pipe
+  ↓
+Handler
+  ↓
+Interceptor (after)
+  ↓
+Response
+
+Any error
+  ↓
+Exception Filter
+```
+
+## Guard
+
+`AuthGuard` runs before validation and the handler. It checks the `Authorization` header. If access is denied, the server returns HTTP 403 and the handler is not executed.
+
+## Interceptor
+
+`LoggingInterceptor` wraps the handler execution and measures request duration:
+
+```text
+GET /users — 12.3 ms
+```
+
+## Validation Pipe
+
+Request validation is implemented with Zod 4.
+
+A Zod schema is passed to `ZodValidationPipe`:
+
+```ts
+@Post()
+createUser(
+  @Body(new ZodValidationPipe(CreateUserSchema))
+  body: CreateUserDto,
+) {}
+```
+
+Invalid data produces a `ValidationError`, which is mapped to HTTP 400 by the exception filter.
+
+## Exception Filter
+
+The exception filter converts errors into HTTP responses:
+
+- `ValidationError` → 400 with validation fields
+- `BadRequestError` → 400
+- `NotFoundError` → 404 with a meaningful message
+- unexpected errors → 500 without exposing stack traces or internal error details
+
+## Request Context
+
+Each request receives a request ID. The server uses the incoming `X-Request-Id` header when provided or generates a new ID.
+
+The request ID is stored using Node.js `AsyncLocalStorage`, so services and repositories can access it without passing it through method parameters. The same ID is returned in the `X-Request-Id` response header.
+
+A global variable cannot be used for request context because Node.js can process other requests while the current request is waiting for asynchronous work. Another request could overwrite the global value and cause request IDs to leak between requests. `AsyncLocalStorage` keeps a separate context for each asynchronous request chain.

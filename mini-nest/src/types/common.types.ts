@@ -1,3 +1,4 @@
+import { Pipe } from "../interfaces/pipe.interface.js"
 import { HttpMethod } from "./http.types.js"
 
 export type Constructor<T extends object = object> = new (...args: any[]) => T
@@ -20,6 +21,7 @@ export enum ParamType {
 export interface Paramdata {
   type: ParamType
   name?: string
+  pipe?: Pipe
 }
 
 export type ParamMetadata = Map<number, Paramdata>

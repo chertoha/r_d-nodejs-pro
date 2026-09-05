@@ -1,8 +1,10 @@
 import { INJECT_TOKENS } from "../tokens.js"
 
-export function Inject(token: symbol): ParameterDecorator {
+export type InjectionToken = string | symbol
+
+export function Inject(token: InjectionToken): ParameterDecorator {
   return (target, _propertyKey, parameterIndex) => {
-    const existingTokens: Map<number, symbol> =
+    const existingTokens: Map<number, InjectionToken> =
       Reflect.getOwnMetadata(INJECT_TOKENS, target) ?? new Map()
 
     existingTokens.set(parameterIndex, token)
