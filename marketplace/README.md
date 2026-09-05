@@ -1,8 +1,8 @@
 # Marketplace API
 
-OpenAPI contract for the Marketplace course project.
+Marketplace course project built with NestJS, PostgreSQL and OpenAPI.
 
-The API currently defines two resources:
+The API currently contains two resources:
 
 - Products
 - Orders
@@ -13,197 +13,15 @@ The OpenAPI specification is located at:
 openapi/openapi.yaml
 ```
 
-## Contract validation approach
-
-This homework uses **Option B — runtime validation**.
-
-The application uses:
-
-- Express 4
-- `express-openapi-validator`
-- OpenAPI 3.0.3
-
-Incoming requests and outgoing responses are validated against `openapi/openapi.yaml`.
-
-OpenAPI validation errors are returned using `application/problem+json`.
-
 ## Install
-
-Install dependencies:
 
 ```bash
 npm install
 ```
 
-## Run
+## OpenAPI contract
 
-Start the contract server:
-
-```bash
-npm start
-```
-
-The server runs at:
-
-```text
-http://localhost:3000
-```
-
-The server uses in-memory data, so all created products and orders are lost after restart.
-
-## OpenAPI validation
-
-Validate the OpenAPI specification with Redocly CLI:
-
-```bash
-npx @redocly/cli@2.46.0 lint openapi/openapi.yaml
-```
-
-Warnings are allowed. The command must finish with exit code `0`.
-
-## Check API operations and resources
-
-Bundle the OpenAPI specification:
-
-```bash
-npx @redocly/cli@2.46.0 bundle openapi/openapi.yaml -o spec.json
-```
-
-Check the number of operations and resources and validate the `Idempotency-Key` declaration:
-
-```bash
-node -e "const s=require('./spec.json'),M=['get','post','put','patch','delete']; const ops=Object.entries(s.paths).flatMap(([p,v])=>Object.keys(v).filter(m=>M.includes(m)).map(m=>[p,m])); const idem=ops.flatMap(([p,m])=>s.paths[p][m].parameters??[]).find(x=>x.in==='header'&&/idempotency-key/i.test(x.name)); console.log('operations:',ops.length,'resources:',new Set(Object.keys(s.paths).map(p=>p.split('/')[1])).size); console.log('Idempotency-Key: required =',idem?.required,'description length =',(idem?.description??'').trim().length)"
-```
-
-Expected:
-
-```text
-operations: 5
-resources: 2
-Idempotency-Key: required = true
-description length >= 40
-```
-
-## Check required OpenAPI features
-
-Check `Idempotency-Key`:
-
-```bash
-grep -c 'Idempotency-Key' openapi/openapi.yaml
-```
-
-Expected value: at least `1`.
-
-Check cursor pagination:
-
-```bash
-grep -c 'next_cursor' openapi/openapi.yaml
-```
-
-Expected value: at least `1`.
-
-Check Problem Details responses:
-
-```bash
-grep -c 'application/problem+json' openapi/openapi.yaml
-```
-
-Expected value: at least `2`.
-
-## Runtime contract validation
-
-Start the server before running the following checks:
-
-```bash
-npm start
-```
-
-Run the requests below from another terminal.
-
-### Missing Idempotency-Key
-
-A request without the required `Idempotency-Key` header must be rejected by the OpenAPI validator:
-
-```bash
-curl -i -X POST http://localhost:3000/orders \
-  -H "Content-Type: application/json" \
-  -d '{"items":[{"product_id":"prod-1","quantity":1}]}'
-```
-
-Expected:
-
-```text
-HTTP 400
-Content-Type: application/problem+json
-```
-
-The response detail should contain:
-
-```text
-request/headers must have required property 'idempotency-key'
-```
-
-### Invalid request body
-
-An order must contain at least one item:
-
-```bash
-curl -i -X POST http://localhost:3000/orders \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: test-key-1" \
-  -d '{"items":[]}'
-```
-
-Expected:
-
-```text
-HTTP 400
-Content-Type: application/problem+json
-```
-
-The response detail should contain:
-
-```text
-request/body/items must NOT have fewer than 1 items
-```
-
-### Valid request
-
-Create a valid order:
-
-```bash
-curl -i -X POST http://localhost:3000/orders \
-  -H "Content-Type: application/json" \
-  -H "Idempotency-Key: test-key-1" \
-  -d '{"items":[{"product_id":"prod-1","quantity":2}]}'
-```
-
-Expected:
-
-```text
-HTTP 201
-Content-Type: application/json
-```
-
-Example response:
-
-```json
-{
-  "id": "order-1",
-  "items": [
-    {
-      "product_id": "prod-1",
-      "quantity": 2
-    }
-  ],
-  "total_cents": 17800,
-  "status": "created"
-}
-```
-
-## API operations
-
-The current OpenAPI contract contains five operations:
+The API contract uses OpenAPI 3.0.3 and defines:
 
 ```text
 GET  /products
@@ -213,8 +31,165 @@ POST /orders
 GET  /orders/{id}
 ```
 
-`GET /products` uses cursor pagination with `limit`, `cursor`, and `next_cursor`.
+`GET /products` uses cursor pagination.
 
 `POST /orders` requires the `Idempotency-Key` header.
 
-All documented `4xx` responses use the `application/problem+json` media type.
+Error responses use `application/problem+json`.
+
+Validate the specification:
+
+```bash
+npx @redocly/cli@2.46.0 lint openapi/openapi.yaml
+```
+
+The contract validation server uses Express 4 with `express-openapi-validator`.
+
+Run it with:
+
+```bash
+npm run start:contract
+```
+
+## Configuration
+
+Application configuration is defined and validated with Zod in:
+
+```text
+src/config/env.schema.ts
+```
+
+Invalid configuration causes the application to fail immediately on startup. Application code accesses configuration through typed `ConfigService<Env, true>`.
+
+### Environment variables
+
+| Variable           | Required | Default | Description                                         |
+| ------------------ | -------- | ------- | --------------------------------------------------- |
+| `PORT`             | No       | `3000`  | NestJS HTTP server port                             |
+| `DB_HOST`          | Yes      | —       | PostgreSQL host                                     |
+| `DB_PORT`          | No       | `5432`  | PostgreSQL port                                     |
+| `DB_NAME`          | Yes      | —       | PostgreSQL database name                            |
+| `DB_USER`          | Yes      | —       | PostgreSQL user                                     |
+| `DB_PASSWORD_FILE` | Yes      | —       | Path to the file containing the PostgreSQL password |
+
+Create local configuration from the example:
+
+```bash
+cp .env.example .env
+```
+
+Check that `.env.example` is synchronized with the Zod schema:
+
+```bash
+npm run check:env
+```
+
+The real `.env` is ignored by Git and excluded from the Docker image.
+
+## Database secret
+
+The PostgreSQL password is stored in:
+
+```text
+secrets/db_password
+```
+
+The password itself is never stored in an environment variable. `DB_PASSWORD_FILE` contains only the path to the secret file.
+
+The `secrets/` directory is ignored by Git and excluded from the Docker image.
+
+Before the first start, create the secret:
+
+```bash
+mkdir -p secrets
+printf 'marketplace_dev_password' > secrets/db_password
+```
+
+`pg.Pool` reads this file through an asynchronous `password` callback whenever a new database connection is created.
+
+## Run
+
+Start the NestJS application and PostgreSQL:
+
+```bash
+docker compose up --build
+```
+
+The API is available at:
+
+```text
+http://localhost:3000
+```
+
+Check the application:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Check the database connection:
+
+```bash
+curl http://localhost:3000/health/db
+```
+
+Stop the containers:
+
+```bash
+docker compose down
+```
+
+For local development with watch mode:
+
+```bash
+npm run start:dev
+```
+
+## Database password rotation
+
+The PostgreSQL password can be rotated without restarting the NestJS application.
+
+With the application running, check its current uptime:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Rotate the password:
+
+```bash
+bash scripts/rotate.sh
+```
+
+The script:
+
+1. changes the PostgreSQL role password with `ALTER ROLE`;
+2. updates `secrets/db_password`;
+3. terminates old PostgreSQL connections with `pg_terminate_backend`.
+
+On the next database connection, `pg.Pool` reads the new password from the secret file.
+
+Verify database access:
+
+```bash
+curl http://localhost:3000/health/db
+```
+
+Then check uptime again:
+
+```bash
+curl http://localhost:3000/health
+```
+
+The database request should succeed and uptime should continue increasing, proving that the application was not restarted.
+
+## Security
+
+Real configuration and secrets are excluded from Git and Docker images:
+
+```text
+.env
+secrets/
+```
+
+The Docker image contains `.env.example` as the configuration contract, but never contains `.env` or `secrets/db_password`.
