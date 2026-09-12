@@ -71,6 +71,7 @@ Invalid configuration causes the application to fail immediately on startup. App
 | `DB_NAME`          | Yes      | —       | PostgreSQL database name                            |
 | `DB_USER`          | Yes      | —       | PostgreSQL user                                     |
 | `DB_PASSWORD_FILE` | Yes      | —       | Path to the file containing the PostgreSQL password |
+| `DATABASE_URL`     | No       | —       | Single connection-string form of the vars above. Source: derived from the same secrets storage (`DB_HOST/PORT/NAME/USER` + `secrets/db_password`) — not read by `DatabaseService`, kept for tooling that expects one connection string (e.g. future TypeORM migrations) |
 
 Create local configuration from the example:
 
@@ -143,6 +144,57 @@ For local development with watch mode:
 
 ```bash
 npm run start:dev
+```
+
+## Database schema, seed & query optimization (HW #12)
+
+Domain tables, seed data and query-optimization work live in `db/`:
+
+| File                                  | Purpose                                                    |
+| -------------------------------------- | ----------------------------------------------------------- |
+| `db/schema.sql`                       | tables, constraints, generated `search_vector` column      |
+| `db/seed.sql`                         | realistic-volume seed data + `VACUUM (ANALYZE)`             |
+| `db/queries/q1.sql` .. `db/queries/q4.sql` | one real API query per file                            |
+| `db/indexes.sql`                      | all optimization indexes, including the GIN full-text index |
+| `db/OPTIMIZATIONS.md`                 | `EXPLAIN (ANALYZE, BUFFERS)` before/after for each query    |
+
+Main table (≥100 000 rows): `orders`. Full-text search table (≥100 000 rows): `products`.
+
+Raise a clean database (creates the dev secret file, then starts only the `db` service):
+
+```bash
+mkdir -p secrets && printf 'marketplace_dev_password' > secrets/db_password && docker compose up -d --wait db
+```
+
+Connect to it:
+
+```bash
+docker compose exec db psql -U user -d r_d__marketplace
+```
+
+Full verification cycle (clean volume -> schema -> seed -> EXPLAIN before -> indexes -> EXPLAIN after):
+
+```bash
+docker compose down -v
+docker compose up -d --wait db
+docker compose exec -T db psql -U user -d r_d__marketplace < db/schema.sql
+docker compose exec -T db psql -U user -d r_d__marketplace < db/seed.sql
+
+# before indexes: every query below must contain "Seq Scan"
+for q in q1 q2 q3 q4; do
+  docker compose exec -T db psql -U user -d r_d__marketplace \
+    -c "EXPLAIN (ANALYZE, BUFFERS) $(cat db/queries/$q.sql)"
+done
+
+docker compose exec -T db psql -U user -d r_d__marketplace < db/indexes.sql
+docker compose exec -T db psql -U user -d r_d__marketplace -c "ANALYZE;"
+
+# after indexes: no "Seq Scan"; q4 uses a cold GIN on the first run after
+# CREATE INDEX, so run it 2-3 times and read the last one
+for q in q1 q2 q3 q4; do
+  docker compose exec -T db psql -U user -d r_d__marketplace \
+    -c "EXPLAIN (ANALYZE, BUFFERS) $(cat db/queries/$q.sql)"
+done
 ```
 
 ## Database password rotation
