@@ -9,6 +9,12 @@ export const envSchema = z.object({
   DB_USER: z.string().min(1),
 
   DB_PASSWORD_FILE: z.string().min(1),
+
+  // Not used by DatabaseService (which connects via the discrete DB_* vars
+  // above plus the DB_PASSWORD_FILE secret). Kept in sync with .env.example
+  // for tooling that expects a single connection string (e.g. future
+  // TypeORM migrations, HW #13+).
+  DATABASE_URL: z.string().min(1).optional(),
 })
 
 export type Env = z.infer<typeof envSchema>
